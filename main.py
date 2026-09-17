@@ -36,7 +36,7 @@ class VerificationView(discord.ui.View):
 
     @discord.ui.button(label="Zweryfikuj się", style=discord.ButtonStyle.green, custom_id="verify_btn", emoji="✅")
     async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-        role = discord.utils.get(interaction.guild.roles, name="✅ • Zweryfikowany")
+        role = discord.utils.get(interaction.guild.roles, name="✅• Zweryfikowany")
         if not role:
             embed = discord.Embed(title="STEFVM × BŁĄD", description="❌ Rola '✅• Zweryfikowany' nie istnieje na serwerze!", color=0xE74C3C)
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -102,7 +102,37 @@ async def on_ready():
         logger.error(f"Błąd synchronizacji: {e}")
 
 # ==============================================================================
-# 3. KATEGORIA: STEFVM / ZARZĄDZANIE MASZYNAMI
+# 3. POWITANIA I POŻEGNANIA (WITAMY / ŻEGNAMY)
+# ==============================================================================
+@bot.event
+async def on_member_join(member):
+    guild = member.guild
+    channel = discord.utils.get(guild.text_channels, name="witamy") or discord.utils.get(guild.text_channels, name="ogólny") or guild.system_channel
+    if channel:
+        embed = discord.Embed(
+            title="STEFVM × WITAMY",
+            description=f"Witaj na pokładzie, {member.mention}! Cieszymy się, że dołączyłeś do **STEFVM** 🎉",
+            color=0x2ECC71
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"Stan serwera: {guild.member_count} użytkowników")
+        await channel.send(embed=embed)
+
+@bot.event
+async def on_member_remove(member):
+    guild = member.guild
+    channel = discord.utils.get(guild.text_channels, name="witamy") or discord.utils.get(guild.text_channels, name="ogólny") or guild.system_channel
+    if channel:
+        embed = discord.Embed(
+            title="STEFVM × ŻEGNAMY",
+            description=f"Użytkownik **{member.name}** opuścił serwer. Do zobaczenia! 👋",
+            color=0xE74C3C
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        await channel.send(embed=embed)
+
+# ==============================================================================
+# 4. KATEGORIA: STEFVM / ZARZĄDZANIE MASZYNAMI
 # ==============================================================================
 @tree.command(name="maszyna-wlacz", description="[STEFVM] Włącza maszynę wirtualną")
 async def m_wlacz(interaction: discord.Interaction):
@@ -168,7 +198,7 @@ async def ram_lim(interaction: discord.Interaction, gigabajty: int):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ==============================================================================
-# 4. KATEGORIA: MODERACJA (Dostępne dla wszystkich na liście, ale chronione uprawnieniami)
+# 5. KATEGORIA: MODERACJA
 # ==============================================================================
 @tree.command(name="ban", description="Banuje użytkownika z serwera")
 async def mod_ban(interaction: discord.Interaction, member: discord.Member, powód: str = "Brak powodu"):
@@ -262,7 +292,7 @@ async def mod_nick(interaction: discord.Interaction, member: discord.Member, now
     await interaction.response.send_message(embed=embed)
 
 # ==============================================================================
-# 5. KATEGORIA: ADMINISTRACJA I PANELE
+# 6. KATEGORIA: ADMINISTRACJA I PANELE
 # ==============================================================================
 @tree.command(name="ticket-setup", description="Wysyła panel tworzenia ticketów")
 async def adm_ticket_setup(interaction: discord.Interaction):
@@ -389,7 +419,7 @@ async def adm_unlockdown(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ==============================================================================
-# 6. KATEGORIA: UŻYTECZNOŚĆ I INFORMACJE
+# 7. KATEGORIA: UŻYTECZNOŚĆ I INFORMACJE
 # ==============================================================================
 @tree.command(name="ping", description="Sprawdza opóźnienie bota")
 async def ut_ping(interaction: discord.Interaction):
@@ -405,7 +435,7 @@ async def ut_uptime(interaction: discord.Interaction):
 @tree.command(name="botinfo", description="Informacje o bocie")
 async def ut_botinfo(interaction: discord.Interaction):
     embed = discord.Embed(title="STEFVM × BOT INFO", description="Oficjalny system zarządzania środowiskiem.", color=0x3498DB)
-    embed.add_field(name="Wersja", value="5.0 Mega Embed Edition", inline=True)
+    embed.add_field(name="Wersja", value="5.1 Mega Embed Edition", inline=True)
     embed.add_field(name="Biblioteka", value="Discord.py", inline=True)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -467,7 +497,7 @@ async def ut_passgen(interaction: discord.Interaction, dlugosc: int = 12):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ==============================================================================
-# 7. KATEGORIA: 4FUN I MINI-GRY
+# 8. KATEGORIA: 4FUN I MINI-GRY
 # ==============================================================================
 @tree.command(name="8ball", description="Magiczna kula odpowiada na pytanie")
 async def fun_8ball(interaction: discord.Interaction, pytanie: str):
@@ -547,7 +577,7 @@ async def fun_slots(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ==============================================================================
-# 8. URUCHOMIENIE BOTA
+# 9. URUCHOMIENIE BOTA
 # ==============================================================================
 if __name__ == "__main__":
     if not TOKEN:
