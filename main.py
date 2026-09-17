@@ -5,6 +5,7 @@ import logging
 import asyncio
 import random
 import os
+import json
 
 # ==============================================================================
 # 1. KONFIGURACJA SYSTEMOWA I LOGOWANIE
@@ -17,6 +18,22 @@ logging.basicConfig(
 logger = logging.getLogger("STEFVM_MegaBot")
 
 TOKEN = os.getenv("TOKEN")
+CONFIG_FILE = "stefvm_config.json"
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_config(config):
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=4)
+
+bot_config = load_config()
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -36,9 +53,9 @@ class VerificationView(discord.ui.View):
 
     @discord.ui.button(label="Zweryfikuj się", style=discord.ButtonStyle.green, custom_id="verify_btn", emoji="✅")
     async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-        role = discord.utils.get(interaction.guild.roles, name="✅• Zweryfikowany")
+        role = discord.utils.get(interaction.guild.roles, name="✅ | Zweryfikowany")
         if not role:
-            embed = discord.Embed(title="STEFVM × BŁĄD", description="❌ Rola '✅• Zweryfikowany' nie istnieje na serwerze!", color=0xE74C3C)
+            embed = discord.Embed(title="STEFVM × BŁĄD", description="❌ Rola '✅ | Zweryfikowany' nie istnieje na serwerze!", color=0xE74C3C)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         if role in interaction.user.roles:
@@ -102,12 +119,50 @@ async def on_ready():
         logger.error(f"Błąd synchronizacji: {e}")
 
 # ==============================================================================
-# 3. POWITANIA I POŻEGNANIA (WITAMY / ŻEGNAMY)
+# 3. POWITANIA I POŻEGNANIA (WITAMY / ŻEGNAMY) ORAZ KONFIGURACJA KANAŁÓW
 # ==============================================================================
+@tree.command(name="ustaw-witamy", description="[STEFVM] Ustawia kanał powitań")
+async def ustaw_witamy(interaction: discord.Interaction, kanał: discord.TextChannel):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
+        return
+    
+    guild_id = str(interaction.guild_id)
+    if guild_id not in bot_config:
+        bot_config[guild_id] = {}
+    bot_config[guild_id]["welcome_channel"] = kanał.id
+    save_config(bot_config)
+    
+    embed = discord.Embed(title="STEFVM × POWITANIA", description=f"✅ Pomyślnie ustawiono kanał powitań na: {kanał.mention}", color=0x2ECC71)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@tree.command(name="ustaw-pozegnania", description="[STEFVM] Ustawia kanał pożegnań")
+async def ustaw_pozegnania(interaction: discord.Interaction, kanał: discord.TextChannel):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
+        return
+    
+    guild_id = str(interaction.guild_id)
+    if guild_id not in bot_config:
+        bot_config[guild_id] = {}
+    bot_config[guild_id]["goodbye_channel"] = kanał.id
+    save_config(bot_config)
+    
+    embed = discord.Embed(title="STEFVM × POŻEGNANIA", description=f"✅ Pomyślnie ustawiono kanał pożegnań na: {kanał.mention}", color=0x2ECC71)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 @bot.event
 async def on_member_join(member):
     guild = member.guild
-    channel = discord.utils.get(guild.text_channels, name="witamy") or discord.utils.get(guild.text_channels, name="ogólny") or guild.system_channel
+    guild_id = str(guild.id)
+    
+    channel = None
+    if guild_id in bot_config and "welcome_channel" in bot_config[guild_id]:
+        channel = guild.get_channel(bot_config[guild_id]["welcome_channel"])
+        
+    if not channel:
+        channel = discord.utils.get(guild.text_channels, name="witamy") or discord.utils.get(guild.text_channels, name="ogólny") or guild.system_channel
+        
     if channel:
         embed = discord.Embed(
             title="STEFVM × WITAMY",
@@ -121,7 +176,15 @@ async def on_member_join(member):
 @bot.event
 async def on_member_remove(member):
     guild = member.guild
-    channel = discord.utils.get(guild.text_channels, name="witamy") or discord.utils.get(guild.text_channels, name="ogólny") or guild.system_channel
+    guild_id = str(guild.id)
+    
+    channel = None
+    if guild_id in bot_config and "goodbye_channel" in bot_config[guild_id]:
+        channel = guild.get_channel(bot_config[guild_id]["goodbye_channel"])
+        
+    if not channel:
+        channel = discord.utils.get(guild.text_channels, name="witamy") or discord.utils.get(guild.text_channels, name="ogólny") or guild.system_channel
+        
     if channel:
         embed = discord.Embed(
             title="STEFVM × ŻEGNAMY",
@@ -132,22 +195,22 @@ async def on_member_remove(member):
         await channel.send(embed=embed)
 
 # ==============================================================================
-# 4. KATEGORIA: STEFVM / ZARZĄDZANIE MASZYNAMI
+# 4. KATEGORIA: STEFVM / ZARZĄDZANIE MASZYNAMI (Publiczne - bez ephemeral)
 # ==============================================================================
 @tree.command(name="maszyna-wlacz", description="[STEFVM] Włącza maszynę wirtualną")
 async def m_wlacz(interaction: discord.Interaction):
-    embed = discord.Embed(title="STEFVM × MASZYNA", description="🟢 Maszyna wirtualna została włączona pomyślnie.", color=0x2ECC71)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed = discord.Embed(title="STEFVM × MASZYNA", description=f"🟢 {interaction.user.mention} włączył maszynę wirtualną pomyślnie.", color=0x2ECC71)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="maszyna-wylacz", description="[STEFVM] Wyłącza maszynę wirtualną")
 async def m_wylacz(interaction: discord.Interaction):
-    embed = discord.Embed(title="STEFVM × MASZYNA", description="🔴 Maszyna wirtualna została wyłączona.", color=0xE74C3C)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed = discord.Embed(title="STEFVM × MASZYNA", description=f"🔴 {interaction.user.mention} wyłączył maszynę wirtualną.", color=0xE74C3C)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="maszyna-restart", description="[STEFVM] Restartuje maszynę wirtualną")
 async def m_restart(interaction: discord.Interaction):
-    embed = discord.Embed(title="STEFVM × MASZYNA", description="🔄 Trwa restart maszyny wirtualnej STEFVM...", color=0xF1C40F)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed = discord.Embed(title="STEFVM × MASZYNA", description=f"🔄 Trwa restart maszyny wirtualnej STEFVM (wywołane przez {interaction.user.mention})...", color=0xF1C40F)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="maszyna-status", description="[STEFVM] Sprawdza status VPS")
 async def m_status(interaction: discord.Interaction):
@@ -155,55 +218,55 @@ async def m_status(interaction: discord.Interaction):
     embed.add_field(name="Stan", value="🟢 ONLINE", inline=True)
     embed.add_field(name="Użycie CPU", value="12%", inline=True)
     embed.add_field(name="Zużycie RAM", value="2.1 GB / 8 GB", inline=True)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="ekran-odblokuj", description="[STEFVM] Odblokowuje ekran maszyny")
 async def e_odblokuj(interaction: discord.Interaction):
-    embed = discord.Embed(title="STEFVM × EKRAN", description="🖥️ Ekran STEFVM został odblokowany.", color=0x2ECC71)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed = discord.Embed(title="STEFVM × EKRAN", description=f"🖥️ Ekran STEFVM został odblokowany przez {interaction.user.mention}.", color=0x2ECC71)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="ekran-zablokuj", description="[STEFVM] Blokuje ekran maszyny")
 async def e_zablokuj(interaction: discord.Interaction):
-    embed = discord.Embed(title="STEFVM × EKRAN", description="🔒 Ekran STEFVM został zablokowany.", color=0xE74C3C)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed = discord.Embed(title="STEFVM × EKRAN", description=f"🔒 Ekran STEFVM został zablokowany przez {interaction.user.mention}.", color=0xE74C3C)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="snapshot-stworz", description="[STEFVM] Tworzy snapshot systemu")
 async def snap_create(interaction: discord.Interaction, nazwa: str):
-    embed = discord.Embed(title="STEFVM × SNAPSHOT", description=f"📸 Utworzono snapshot o nazwie: `{nazwa}`", color=0x2ECC71)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed = discord.Embed(title="STEFVM × SNAPSHOT", description=f"📸 Utworzono snapshot o nazwie: `{nazwa}` (wywołane przez {interaction.user.mention})", color=0x2ECC71)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="snapshot-przywroc", description="[STEFVM] Przywraca snapshot systemu")
 async def snap_restore(interaction: discord.Interaction, nazwa: str):
-    embed = discord.Embed(title="STEFVM × SNAPSHOT", description=f"♻️ Przywrócono snapshot: `{nazwa}`", color=0x3498DB)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed = discord.Embed(title="STEFVM × SNAPSHOT", description=f"♻️ Przywrócono snapshot: `{nazwa}` (wywołane przez {interaction.user.mention})", color=0x3498DB)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="ip-info", description="[STEFVM] Pokazuje adres IP instancji")
 async def ip_info(interaction: discord.Interaction):
     embed = discord.Embed(title="STEFVM × SIEC", description="🌐 Przypisane adresy IP:\n`192.168.1.150` (Prywatny)\n`51.83.xx.xx` (Publiczny)", color=0x9B59B6)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="port-forward", description="[STEFVM] Przekierowuje port w sieci")
 async def port_fwd(interaction: discord.Interaction, port: int):
     embed = discord.Embed(title="STEFVM × PORTY", description=f"🔌 Port sieciowy `{port}` został pomyślnie otwarty.", color=0x2ECC71)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="cpu-limit", description="[STEFVM] Ustawia limit rdzeni CPU")
 async def cpu_lim(interaction: discord.Interaction, rdzenie: int):
     embed = discord.Embed(title="STEFVM × ZASOBY", description=f"⚙️ Limit rdzeni CPU zmieniony na: **{rdzenie} rdzeni**", color=0xF1C40F)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed)
 
 @tree.command(name="ram-limit", description="[STEFVM] Ustawia limit pamięci RAM")
 async def ram_lim(interaction: discord.Interaction, gigabajty: int):
     embed = discord.Embed(title="STEFVM × ZASOBY", description=f"🧠 Limit pamięci RAM ustawiony na: **{gigabajty} GB**", color=0xF1C40F)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed)
 
 # ==============================================================================
-# 5. KATEGORIA: MODERACJA
+# 5. KATEGORIA: MODERACJA (z komunikatem "❌ Brak uprawnień!")
 # ==============================================================================
 @tree.command(name="ban", description="Banuje użytkownika z serwera")
 async def mod_ban(interaction: discord.Interaction, member: discord.Member, powód: str = "Brak powodu"):
     if not interaction.user.guild_permissions.ban_members:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Nie masz uprawnień do banowania użytkowników.", ephemeral=True)
         return
     await member.ban(reason=powód)
     embed = discord.Embed(title="STEFVM × MODERACJA [BAN]", description=f"🔨 Zbanowano użytkownika {member.mention}.\n**Powód:** {powód}", color=0xE74C3C)
@@ -212,7 +275,7 @@ async def mod_ban(interaction: discord.Interaction, member: discord.Member, pow�
 @tree.command(name="kick", description="Wyrzuca użytkownika z serwera")
 async def mod_kick(interaction: discord.Interaction, member: discord.Member, powód: str = "Brak powodu"):
     if not interaction.user.guild_permissions.kick_members:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Nie masz uprawnień do wyrzucania użytkowników.", ephemeral=True)
         return
     await member.kick(reason=powód)
     embed = discord.Embed(title="STEFVM × MODERACJA [KICK]", description=f"👢 Wyrzucono {member.mention}.\n**Powód:** {powód}", color=0xE67E22)
@@ -221,7 +284,7 @@ async def mod_kick(interaction: discord.Interaction, member: discord.Member, pow
 @tree.command(name="timeout", description="Wycisza użytkownika na określony czas")
 async def mod_timeout(interaction: discord.Interaction, member: discord.Member, minuty: int, powód: str = "Brak"):
     if not interaction.user.guild_permissions.moderate_members:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Nie masz uprawnień do wyciszania użytkowników.", ephemeral=True)
         return
     until = discord.utils.utcnow() + discord.timedelta(minutes=minuty)
     await member.timeout(until, reason=powód)
@@ -231,7 +294,7 @@ async def mod_timeout(interaction: discord.Interaction, member: discord.Member, 
 @tree.command(name="untimeout", description="Zdejmuje wyciszenie z użytkownika")
 async def mod_untimeout(interaction: discord.Interaction, member: discord.Member):
     if not interaction.user.guild_permissions.moderate_members:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Nie masz uprawnień do zarządzania wyciszeniami.", ephemeral=True)
         return
     await member.timeout(None)
     embed = discord.Embed(title="STEFVM × MODERACJA", description=f"🔊 Zdjęto wyciszenie z {member.mention}.", color=0x2ECC71)
@@ -240,7 +303,7 @@ async def mod_untimeout(interaction: discord.Interaction, member: discord.Member
 @tree.command(name="warn", description="Ostrzega użytkownika")
 async def mod_warn(interaction: discord.Interaction, member: discord.Member, powód: str):
     if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Nie masz uprawnień do zarządzania wiadomościami.", ephemeral=True)
         return
     embed = discord.Embed(title="STEFVM × OSTRZEŻENIE", description=f"⚠️ Udzielono ostrzeżenia dla {member.mention}.\n**Powód:** {powód}", color=0xE67E22)
     await interaction.response.send_message(embed=embed)
@@ -248,7 +311,7 @@ async def mod_warn(interaction: discord.Interaction, member: discord.Member, pow
 @tree.command(name="clear", description="Usuwa określoną liczbę wiadomości")
 async def mod_clear(interaction: discord.Interaction, ilosc: int):
     if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Zarządzanie wiadomościami.", ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True)
     deleted = await interaction.channel.purge(limit=ilosc)
@@ -258,7 +321,7 @@ async def mod_clear(interaction: discord.Interaction, ilosc: int):
 @tree.command(name="slowmode", description="Ustawia wolny tryb na kanale")
 async def mod_slowmode(interaction: discord.Interaction, sekundy: int):
     if not interaction.user.guild_permissions.manage_channels:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Zarządzanie kanałami.", ephemeral=True)
         return
     await interaction.channel.edit(slowmode_delay=sekundy)
     embed = discord.Embed(title="STEFVM × SLOWMODE", description=f"⏳ Ustawiono tryb powolny na **{sekundy} sekund**.", color=0x3498DB)
@@ -267,7 +330,7 @@ async def mod_slowmode(interaction: discord.Interaction, sekundy: int):
 @tree.command(name="lock", description="Blokuje kanał tekstowy")
 async def mod_lock(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.manage_channels:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Zarządzanie kanałami.", ephemeral=True)
         return
     await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
     embed = discord.Embed(title="STEFVM × KANAŁ", description="🔒 Ten kanał został zablokowany dla użytkowników.", color=0xE74C3C)
@@ -276,7 +339,7 @@ async def mod_lock(interaction: discord.Interaction):
 @tree.command(name="unlock", description="Odblokowuje kanał tekstowy")
 async def mod_unlock(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.manage_channels:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Zarządzanie kanałami.", ephemeral=True)
         return
     await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
     embed = discord.Embed(title="STEFVM × KANAŁ", description="🔓 Ten kanał został odblokowany.", color=0x2ECC71)
@@ -285,7 +348,7 @@ async def mod_unlock(interaction: discord.Interaction):
 @tree.command(name="nick", description="Zmienia pseudonim użytkownika")
 async def mod_nick(interaction: discord.Interaction, member: discord.Member, nowy_nick: str):
     if not interaction.user.guild_permissions.manage_nicknames:
-        await interaction.response.send_message("❌ Nie masz uprawnień do użycia tej komendy!", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Zarządzanie pseudonimami.", ephemeral=True)
         return
     await member.edit(nick=nowy_nick)
     embed = discord.Embed(title="STEFVM × NICK", description=f"✏️ Zmieniono pseudonim dla {member.mention} na `{nowy_nick}`.", color=0x2ECC71)
@@ -297,7 +360,7 @@ async def mod_nick(interaction: discord.Interaction, member: discord.Member, now
 @tree.command(name="ticket-setup", description="Wysyła panel tworzenia ticketów")
 async def adm_ticket_setup(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Administrator", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
         return
     embed = discord.Embed(title="STEFVM × POMOC TECHNICZNA", description="Kliknij przycisk poniżej, aby otworzyć oficjalne zgłoszenie.", color=0xF1C40F)
     await interaction.channel.send(embed=embed, view=TicketButtonView())
@@ -307,7 +370,7 @@ async def adm_ticket_setup(interaction: discord.Interaction):
 @tree.command(name="weryfikacja-setup", description="Wysyła panel weryfikacji przycisku")
 async def adm_ver_setup(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Administrator", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
         return
     embed = discord.Embed(title="STEFVM × WERYFIKACJA", description="Kliknij przycisk poniżej, aby uzyskać pełny dostęp.", color=0x00F2FE)
     await interaction.channel.send(embed=embed, view=VerificationView())
@@ -317,7 +380,7 @@ async def adm_ver_setup(interaction: discord.Interaction):
 @tree.command(name="regulamin-setup", description="Wysyła oficjalny regulamin serwera")
 async def adm_rules(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Administrator", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
         return
     embed = discord.Embed(
         title="STEFVM × REGULAMIN",
@@ -331,7 +394,7 @@ async def adm_rules(interaction: discord.Interaction):
 @tree.command(name="rola-daj", description="Nadaje rolę użytkownikowi")
 async def adm_addrole(interaction: discord.Interaction, member: discord.Member, role: discord.Role):
     if not interaction.user.guild_permissions.manage_roles:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Zarządzanie rolami", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Zarządzanie rolami", ephemeral=True)
         return
     await member.add_roles(role)
     embed = discord.Embed(title="STEFVM × ROLE", description=f"✅ Nadano rolę **{role.name}** dla {member.mention}.", color=0x2ECC71)
@@ -340,7 +403,7 @@ async def adm_addrole(interaction: discord.Interaction, member: discord.Member, 
 @tree.command(name="rola-zabierz", description="Odbiera rolę użytkownikowi")
 async def adm_removerole(interaction: discord.Interaction, member: discord.Member, role: discord.Role):
     if not interaction.user.guild_permissions.manage_roles:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Zarządzanie rolami", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Zarządzanie rolami", ephemeral=True)
         return
     await member.remove_roles(role)
     embed = discord.Embed(title="STEFVM × ROLE", description=f"✅ Odbierano rolę **{role.name}** użytkownikowi {member.mention}.", color=0x2ECC71)
@@ -349,7 +412,7 @@ async def adm_removerole(interaction: discord.Interaction, member: discord.Membe
 @tree.command(name="ogloszenie", description="Wysyła oficjalne ogłoszenie w postaci embeda")
 async def adm_announcement(interaction: discord.Interaction, tytul: str, tresc: str):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Administrator", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
         return
     embed = discord.Embed(title=f"STEFVM × OGŁOSZENIE: {tytul}", description=tresc, color=0x2ECC71)
     await interaction.channel.send(embed=embed)
@@ -359,7 +422,7 @@ async def adm_announcement(interaction: discord.Interaction, tytul: str, tresc: 
 @tree.command(name="embed-stworz", description="Tworzy customowy embed")
 async def adm_embed(interaction: discord.Interaction, tytul: str, opis: str):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Administrator", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
         return
     embed = discord.Embed(title=f"STEFVM × {tytul}", description=opis, color=0x9B59B6)
     await interaction.channel.send(embed=embed)
@@ -369,7 +432,7 @@ async def adm_embed(interaction: discord.Interaction, tytul: str, opis: str):
 @tree.command(name="say", description="Wysyła wiadomość jako bot")
 async def adm_say(interaction: discord.Interaction, wiadomosc: str):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Administrator", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
         return
     await interaction.channel.send(wiadomosc)
     embed = discord.Embed(title="STEFVM", description="✅ Wiadomość wysłana pomyślnie.", color=0x2ECC71)
@@ -378,7 +441,7 @@ async def adm_say(interaction: discord.Interaction, wiadomosc: str):
 @tree.command(name="poll-stworz", description="Tworzy szybką ankietę")
 async def adm_poll(interaction: discord.Interaction, pytanie: str):
     if not interaction.user.guild_permissions.manage_messages:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Zarządzanie wiadomościami", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Zarządzanie wiadomościami", ephemeral=True)
         return
     embed = discord.Embed(title="STEFVM × ANKIETA", description=pytanie, color=0xF1C40F)
     msg = await interaction.channel.send(embed=embed)
@@ -390,7 +453,7 @@ async def adm_poll(interaction: discord.Interaction, pytanie: str):
 @tree.command(name="giveaway-start", description="Rozpoczyna konkurs (giveaway)")
 async def adm_giveaway(interaction: discord.Interaction, nagroda: str):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Administrator", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
         return
     embed = discord.Embed(title="STEFVM × GIVEAWAY", description=f"Nagroda: **{nagroda}**\nReaguj 🎉, aby wziąć udział!", color=0xE91E63)
     msg = await interaction.channel.send(embed=embed)
@@ -401,7 +464,7 @@ async def adm_giveaway(interaction: discord.Interaction, nagroda: str):
 @tree.command(name="server-lockdown", description="Blokuje cały serwer w nagłym wypadku")
 async def adm_lockdown(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Administrator", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
         return
     for channel in interaction.guild.text_channels:
         await channel.set_permissions(interaction.guild.default_role, send_messages=False)
@@ -411,7 +474,7 @@ async def adm_lockdown(interaction: discord.Interaction):
 @tree.command(name="server-unlockdown", description="Odblokowuje cały serwer")
 async def adm_unlockdown(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
-        await interaction.response.send_message("❌ Wymagane uprawnienie: Administrator", ephemeral=True)
+        await interaction.response.send_message("❌ Brak uprawnień! Wymagane uprawnienie: Administrator", ephemeral=True)
         return
     for channel in interaction.guild.text_channels:
         await channel.set_permissions(interaction.guild.default_role, send_messages=True)
@@ -435,7 +498,7 @@ async def ut_uptime(interaction: discord.Interaction):
 @tree.command(name="botinfo", description="Informacje o bocie")
 async def ut_botinfo(interaction: discord.Interaction):
     embed = discord.Embed(title="STEFVM × BOT INFO", description="Oficjalny system zarządzania środowiskiem.", color=0x3498DB)
-    embed.add_field(name="Wersja", value="5.1 Mega Embed Edition", inline=True)
+    embed.add_field(name="Wersja", value="5.2 Mega Embed Edition", inline=True)
     embed.add_field(name="Biblioteka", value="Discord.py", inline=True)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
